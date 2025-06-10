@@ -12,7 +12,7 @@ const PORT = process.env.PORT || 3030;
 
 // Middleware
 app.use(cors({
-  origin: ['http://localhost:3001', 'https://votre-site-production.vercel.app'],
+  origin: ['http://localhost:3001', 'https://kuraz.vercel.app'],
   methods: ['GET', 'OPTIONS'],
   credentials: true
 }));
