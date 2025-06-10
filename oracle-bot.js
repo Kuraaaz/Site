@@ -182,6 +182,9 @@ client.on('error', (error) => {
 });
 
 // Fonction pour mettre à jour les données utilisateur
+// Add this to your bot code for better presence handling:
+
+// Enhanced user data update function
 async function updateUserData() {
   try {
     if (!client.isReady()) return;
@@ -192,19 +195,21 @@ async function updateUserData() {
       return;
     }
     
-    userData.username = '!" Kura';
+    // Update basic user info
+    userData.username = user.username; // Use actual username instead of hardcoded
     userData.avatar = user.avatar 
-      ? `https://cdn.discordapp.com/avatars/${user.id}/${user.avatar}.png` 
-      : 'https://cdn.discordapp.com/embed/avatars/0.png';
+      ? `https://cdn.discordapp.com/avatars/${user.id}/${user.avatar}.png?size=128` 
+      : `https://cdn.discordapp.com/embed/avatars/${user.discriminator % 5}.png`;
     
-    // Chercher l'utilisateur dans les serveurs
-    const guild = client.guilds.cache.find(g => g.members.cache.has(process.env.USER_ID));
-    if (!guild) {
-      log('warn', 'Utilisateur non trouvé dans les serveurs disponibles');
-      return;
+    // Try to get presence from multiple guilds
+    let presence = null;
+    for (const guild of client.guilds.cache.values()) {
+      if (guild.members.cache.has(process.env.USER_ID)) {
+        presence = guild.presences.resolve(process.env.USER_ID);
+        if (presence) break;
+      }
     }
     
-    const presence = guild.presences.resolve(process.env.USER_ID);
     if (presence) {
       userData.status = presence.status;
       userData.activities = presence.activities ? presence.activities.map(activity => ({
@@ -214,15 +219,20 @@ async function updateUserData() {
         state: activity.state || null,
         assets: activity.assets || null,
         application_id: activity.applicationId || null,
-        start_timestamp: activity.timestamps?.start ? Number(activity.timestamps.start) : null
+        timestamps: activity.timestamps || null
       })) : [];
-      
-      log('info', 'Données utilisateur mises à jour', {
-        userId: process.env.USER_ID,
-        status: userData.status,
-        activitiesCount: userData.activities.length
-      });
+    } else {
+      // If no presence found, user is likely offline
+      userData.status = 'offline';
+      userData.activities = [];
     }
+    
+    log('info', 'Données utilisateur mises à jour', {
+      userId: process.env.USER_ID,
+      status: userData.status,
+      activitiesCount: userData.activities.length,
+      hasAvatar: !!user.avatar
+    });
   } catch (error) {
     log('error', 'Erreur lors de la mise à jour des données utilisateur', {
       message: error.message,
@@ -230,6 +240,38 @@ async function updateUserData() {
     });
   }
 }
+
+// Enhanced presence update handler
+client.on('presenceUpdate', (oldPresence, newPresence) => {
+  if (newPresence && newPresence.userId === process.env.USER_ID) {
+    const oldActivities = userData.activities || [];
+    
+    userData.activities = newPresence.activities.map(activity => ({
+      name: activity.name,
+      type: activity.type,
+      state: activity.state || null,
+      details: activity.details || null,
+      assets: activity.assets || null,
+      application_id: activity.applicationId || null,
+      timestamps: activity.timestamps || null
+    }));
+    
+    userData.status = newPresence.status;
+    
+    const activityChanged = JSON.stringify(oldActivities) !== JSON.stringify(userData.activities);
+    const statusChanged = oldPresence?.status !== newPresence.status;
+    
+    if (activityChanged || statusChanged) {
+      log('info', 'Mise à jour de la présence utilisateur', {
+        userId: newPresence.userId,
+        oldStatus: oldPresence?.status || 'inconnu',
+        newStatus: newPresence.status,
+        activitiesUpdated: activityChanged,
+        activityNames: userData.activities.map(a => a.name)
+      });
+    }
+  }
+});
 
 // API Route pour récupérer les données utilisateur
 app.get('/api/discord/discord-data', (req, res) => {
